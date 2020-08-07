@@ -186,7 +186,7 @@ output$dwnld_all_reports_btn <- downloadHandler(
     shiny::withProgress(
       message = paste0("Downloading ",n_pkgs," Report",ifelse(n_pkgs > 1,"s","")),
       value = 0,
-      max = n_pkgs + 2, # tell the progress bar the total number of events
+      max = 2, #n_pkgs + 2, # tell the progress bar the total number of events
       {
         shiny::incProgress(1)
         
@@ -198,26 +198,74 @@ output$dwnld_all_reports_btn <- downloadHandler(
           Report <- file.path(my_dir, "Report_doc.Rmd")
           file.copy("Reports/Report_doc.Rmd", Report, overwrite = TRUE)
         }
-        fs <- c()
-        for (i in 1:n_pkgs) {
-          # grab package name and version, then create filename and path
-          this_pkg <- values$Total_New_Undis_Dup$package[i]
-          this_ver <- values$Total_New_Undis_Dup$version[i]
-          file_named <- paste0(this_pkg,"_",this_ver,"_Risk_Assessment.",input$all_reports_format)
-          path <- file.path(my_dir, file_named)
-          # render the report, passing parameters to the rmd file
-          rmarkdown::render(
-            input = Report,
-            output_file = path,
-            params = list(package = this_pkg,
-                          version = this_ver,
-                          cwd = values$cwd)
-          )
-          fs <- c(fs, path)  # save all the 
-          shiny::incProgress(1) # increment progress bar
-        }
+        # # Test
+        # dat <-
+        #   data.frame(package = c("dplyr","sampsizeCMH"), version = c("1.0.0","0.0.0"))
+        # 
+        # params_list <- dat %>%
+        #   select(package, version) %>%
+        #   mutate(cwd = "some value") %>%
+        #   split(seq(nrow(dat)))
+
+        # report_dat <- dat %>%
+        #   mutate(
+        #     output_file = file.path( 
+        #       my_dir,
+        #       paste0(package,"_",version,"_Risk_Assessment.","html")
+        #     ),
+        #     params = params_list
+        #   ) %>%
+        #   select(output_file, params) %>%
+        #   as.tibble()
+        # 
+        # report_dat$params
+        
+        # create a list of paramters, rowwise
+        params_list <- values$Total_New_Undis_Dup %>%
+          select(package, version) %>%
+          mutate(cwd = values$cwd,
+                 name = input$name,
+                 role = input$role
+          ) %>%
+          split(seq(nrow(values$Total_New_Undis_Dup)))
+        
+        # create dataset to feed to pwalk, that contain arguments for render()
+        report_dat <- values$Total_New_Undis_Dup %>%
+          mutate(
+             output_file = file.path( 
+               my_dir,
+               paste0(package,"_",version,"_Risk_Assessment.",input$all_reports_format)
+               ),
+             params = params_list
+          ) %>%
+          select(output_file, params)
+        
+        # render the reports!
+        report_dat %>% purrr::pwalk(rmarkdown::render, input = Report)
+          
+          
+        # fs <- c()
+        # for (i in 1:n_pkgs) {
+        #   # grab package name and version, then create filename and path
+        #   this_pkg <- values$Total_New_Undis_Dup$package[i]
+        #   this_ver <- values$Total_New_Undis_Dup$version[i]
+        #   file_named <- paste0(this_pkg,"_",this_ver,"_Risk_Assessment.",input$all_reports_format)
+        #   path <- file.path(my_dir, file_named)
+        #   # render the report, passing parameters to the rmd file
+        #   rmarkdown::render(
+        #     input = Report,
+        #     output_file = path,
+        #     params = list(package = this_pkg,
+        #                   version = this_ver,
+        #                   cwd = values$cwd)
+        #   )
+        #   fs <- c(fs, path)  # save all the 
+        #   shiny::incProgress(1) # increment progress bar
+        # }
+        
         # zip all the files up, -j retains just the files in zip file
-        zip(zipfile = file, files = fs ,extras = "-j")
+        # zip(zipfile = file, files = fs ,extras = "-j")
+        zip(zipfile = file, files = report_dat$output_file ,extras = "-j")
         shiny::incProgress(1) # increment progress bar
       })
   },
